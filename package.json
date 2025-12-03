@@ -1,23 +1,86 @@
 {
   "name": "vscode-github-copilot-controller",
-  "displayName": "vscode-github-copilot-controller",
-  "description": "This extension enables you to remotely control GitHub Copilot",
+  "displayName": "Controller for GitHub Copilot",
+  "description": "Enables remote real-time control of GitHub Copilot from external apps",
   "version": "0.0.1",
+  "publisher": "yuxi-labs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yuxi-Labs/vscode-github-copilot-controller"
+  },
   "engines": {
     "vscode": "^1.106.1"
   },
   "categories": [
+    "Chat",
     "Other"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "copilot",
+    "remote",
+    "chat",
+    "controller"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "vscode-github-copilot-controller.helloWorld",
-        "title": "Hello World"
+        "command": "copilot-controller.start",
+        "title": "Start",
+        "category": "Copilot Controller"
+      },
+      {
+        "command": "copilot-controller.stop",
+        "title": "Stop",
+        "category": "Copilot Controller"
+      },
+      {
+        "command": "copilot-controller.showStatus",
+        "title": "Show Status",
+        "category": "Copilot Controller"
+      },
+      {
+        "command": "copilot-controller.copyConnectionInfo",
+        "title": "Copy Connection Info",
+        "category": "Copilot Controller"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Copilot Controller",
+      "properties": {
+        "copilotController.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start the controller when VS Code opens"
+        },
+        "copilotController.port": {
+          "type": "number",
+          "default": 3712,
+          "description": "Port to listen on"
+        },
+        "copilotController.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Authentication token (auto-generated if empty)"
+        },
+        "copilotController.tunnelUrl": {
+          "type": "string",
+          "default": "",
+          "description": "External tunnel URL for remote access"
+        },
+        "copilotController.allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["*"],
+          "description": "Allowed origins for CORS"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -33,16 +96,20 @@
     "lint": "eslint src",
     "test": "vscode-test"
   },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
     "@types/vscode": "^1.106.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.46.3",
-    "eslint": "^9.39.1",
+    "@types/ws": "^8.5.13",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.0",
+    "eslint": "^9.39.1",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.46.3"
   }
 }
