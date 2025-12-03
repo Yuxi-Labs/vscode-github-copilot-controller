@@ -337,13 +337,16 @@ export class Controller {
 
         const authTimeout = setTimeout(() => {
             if (!authenticated) {
+                this.log(`WebSocket auth timeout; closing ${clientId}`);
                 ws.close(4001, 'Authentication timeout');
             }
         }, 10000);
 
         ws.on('message', async (data: RawData) => {
             try {
-                const message = JSON.parse(data.toString());
+            const raw = data.toString();
+            this.log(`WebSocket message from ${clientId}: ${raw}`);
+            const message = JSON.parse(raw);
 
                 if (!authenticated) {
                     if (message.type === 'auth') {
@@ -373,9 +376,11 @@ export class Controller {
                                 error: 'Invalid token'
                             };
                             ws.send(JSON.stringify(response));
+                            this.log(`WebSocket invalid token for ${clientId}`);
                             ws.close(4003, 'Invalid token');
                         }
                     } else {
+                        this.log(`WebSocket ${clientId} sent non-auth before authentication: ${JSON.stringify(message)}`);
                         ws.close(4002, 'Authentication required');
                     }
                     return;
@@ -397,11 +402,12 @@ export class Controller {
             }
         });
 
-        ws.on('close', () => {
+        ws.on('close', (code: number, reason: Buffer) => {
             clearTimeout(authTimeout);
             this.connections.delete(clientId);
             this.wsClients.delete(clientId);
-            this.log(`WebSocket client disconnected: ${clientId}`);
+            const reasonText = reason?.toString() || '';
+            this.log(`WebSocket client disconnected: ${clientId} code=${code} reason='${reasonText}'`);
         });
 
         ws.on('error', (err: Error) => {

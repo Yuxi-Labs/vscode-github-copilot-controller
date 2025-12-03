@@ -2,7 +2,7 @@
 
 ## Overview
 
-This VS Code extension acts as a **controller** (not a server) that enables remote, real-time, bidirectional communication with GitHub Copilot from external client applications (mobile, desktop, web).
+This VS Code extension is a **controller** that enables remote, real-time, bidirectional communication with GitHub Copilot from external client applications (mobile, desktop, web). It orchestrates messages between remote clients and the Copilot instance running in VS Code.
 
 ## Problem Statement
 
@@ -151,6 +151,5 @@ src/
 ## Future Considerations
 
 - Yuxi-Labs hosted relay service for easier remote access
-- Multiple simultaneous client connections
 - Conversation history sync across clients
 - End-to-end encryption option

@@ -6,6 +6,7 @@ import {
     ErrorPayload, 
     PendingRequest 
 } from './types';
+import { ModelTracker } from './model-tracker';
 
 /**
  * Bridge between remote clients and VS Code's Copilot Language Model API
@@ -14,8 +15,11 @@ export class CopilotBridge {
     private pendingRequests: Map<string, PendingRequest> = new Map();
     private conversationHistory: vscode.LanguageModelChatMessage[] = [];
     private maxHistoryLength = 50;
+    private modelTracker: ModelTracker;
 
-    constructor() {}
+    constructor() {
+        this.modelTracker = ModelTracker.getInstance();
+    }
 
     /**
      * Send a message to Copilot and stream the response
@@ -28,27 +32,22 @@ export class CopilotBridge {
         onError: (error: ErrorPayload) => void
     ): Promise<void> {
         try {
-            // Select the chat model
-            const models = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-                family: payload.model || 'gpt-4o'
-            });
+            // Use the ModelTracker to get the appropriate model
+            // This respects the user's selected model in VS Code
+            const model = await this.modelTracker.getModelForRequest(payload.model);
 
-            if (models.length === 0) {
-                // Try without family filter
-                const anyModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-                if (anyModels.length === 0) {
-                    onError({
-                        requestId,
-                        code: 'NO_MODEL',
-                        message: 'No Copilot models available. Make sure GitHub Copilot is installed and signed in.'
-                    });
-                    return;
-                }
-                models.push(anyModels[0]);
+            if (!model) {
+                onError({
+                    requestId,
+                    code: 'NO_MODEL',
+                    message: payload.model 
+                        ? `Model '${payload.model}' not found. Make sure GitHub Copilot is installed and signed in.`
+                        : 'No Copilot models available. Make sure GitHub Copilot is installed and signed in.'
+                });
+                return;
             }
 
-            const model = models[0];
+            console.log(`[CopilotBridge] Using model: ${model.name} (${model.id})`);
 
             // Add user message to history
             this.conversationHistory.push(

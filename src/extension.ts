@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
 import { Controller } from './controller';
+import { ModelTracker } from './model-tracker';
 
 let controller: Controller | null = null;
 let statusBarItem: vscode.StatusBarItem;
+let modelTracker: ModelTracker;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Copilot Controller extension activating...');
+
+    // Initialize the model tracker
+    modelTracker = ModelTracker.getInstance();
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -16,6 +21,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Create controller instance
     controller = new Controller(context);
+
+    // Initialize model tracker with the controller's output channel
+    modelTracker.initialize(controller.getOutputChannel());
 
     // Register commands
     context.subscriptions.push(
@@ -46,8 +54,14 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             const info = controller.getConnectionInfo();
+            const models = await modelTracker.listModels();
+            const modelList = models.map(m => m.name).join(', ') || 'None available';
+            
             const message = [
                 `🟢 Controller running on port ${info.local.split(':').pop()}`,
+                ``,
+                `Available models: ${modelList}`,
+                `Pass "model" in request to select one`,
                 ``,
                 `Local: ${info.local}`,
                 info.tunnel ? `Tunnel: ${info.tunnel}` : null,
@@ -83,12 +97,14 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             const info = controller.getConnectionInfo();
+            const models = await modelTracker.listModels();
             const connectionData = {
                 local: info.local,
                 tunnel: info.tunnel,
                 token: info.token,
                 websocket: `${info.local}${info.wsPath}`,
-                sse: `${info.local}${info.ssePath}`
+                sse: `${info.local}${info.ssePath}`,
+                availableModels: models
             };
 
             await vscode.env.clipboard.writeText(JSON.stringify(connectionData, null, 2));
@@ -112,8 +128,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 function updateStatusBar(running: boolean) {
     if (running) {
-        statusBarItem.text = '$(broadcast) Copilot Controller';
-        statusBarItem.tooltip = 'Copilot Controller is running - Click for status';
+        statusBarItem.text = '$(broadcast) Controller';
+        statusBarItem.tooltip = 'Copilot Controller running\nClick for status';
         statusBarItem.backgroundColor = undefined;
     } else {
         statusBarItem.text = '$(circle-slash) Copilot Controller';
