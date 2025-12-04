@@ -13,7 +13,8 @@ export interface ClientMessage {
 export type ClientMessageType = 
     | 'chat'
     | 'cancel'
-    | 'ping';
+    | 'ping'
+    | 'models';
 
 export interface ChatPayload {
     message: string;
@@ -37,7 +38,8 @@ export type ControllerMessageType =
     | 'done'
     | 'error'
     | 'pong'
-    | 'status';
+    | 'status'
+    | 'models';
 
 export interface ChunkPayload {
     requestId: string;

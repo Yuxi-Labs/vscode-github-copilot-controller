@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { WebSocketServer, WebSocket, RawData } from 'ws';
 import * as vscode from 'vscode';
 import { CopilotBridge } from './copilot-bridge';
+import { ModelTracker } from './model-tracker';
 import {
     ClientMessage,
     ControllerMessage,
@@ -439,6 +440,10 @@ export class Controller {
                 });
                 break;
 
+            case 'models':
+                await this.handleModels(message.id, send);
+                break;
+
             default:
                 send({
                     id: message.id,
@@ -497,6 +502,29 @@ export class Controller {
                 ? { requestId: payload.requestId, cancelled: true }
                 : { code: 'NOT_FOUND', message: 'Request not found' }
         });
+    }
+
+    private async handleModels(
+        messageId: string,
+        send: (msg: ControllerMessage) => void
+    ): Promise<void> {
+        try {
+            const modelTracker = ModelTracker.getInstance();
+            const models = await modelTracker.listModels();
+            this.log(`Models request: returning ${models.length} models`);
+            send({
+                id: messageId,
+                type: 'models',
+                payload: { models }
+            });
+        } catch (err) {
+            this.log(`Models request error: ${err}`);
+            send({
+                id: messageId,
+                type: 'error',
+                payload: { code: 'MODELS_ERROR', message: `Failed to get models: ${err}` }
+            });
+        }
     }
 
     // ============ Auth Helpers ============

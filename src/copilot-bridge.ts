@@ -32,6 +32,8 @@ export class CopilotBridge {
         onError: (error: ErrorPayload) => void
     ): Promise<void> {
         try {
+            console.log(`[CopilotBridge] Request received. Requested model: "${payload.model}"`);
+            
             // Use the ModelTracker to get the appropriate model
             // This respects the user's selected model in VS Code
             const model = await this.modelTracker.getModelForRequest(payload.model);
@@ -59,6 +61,16 @@ export class CopilotBridge {
                 this.conversationHistory = this.conversationHistory.slice(-this.maxHistoryLength);
             }
 
+            // Build messages array with system context
+            // The first message provides context about the model's identity
+            const systemContext = `You are ${model.name}, an AI assistant. When asked about your identity, you should accurately identify yourself as ${model.name}. You are being accessed through a remote client application connected to VS Code.`;
+            
+            const messagesWithContext: vscode.LanguageModelChatMessage[] = [
+                vscode.LanguageModelChatMessage.User(systemContext),
+                vscode.LanguageModelChatMessage.Assistant("Understood. I am " + model.name + " and will identify myself accurately when asked."),
+                ...this.conversationHistory
+            ];
+
             // Create cancellation token
             const cancellationTokenSource = new vscode.CancellationTokenSource();
 
@@ -73,7 +85,7 @@ export class CopilotBridge {
 
             // Send request to Copilot
             const response = await model.sendRequest(
-                this.conversationHistory,
+                messagesWithContext,
                 {},
                 cancellationTokenSource.token
             );
