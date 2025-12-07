@@ -9,7 +9,7 @@ let modelTracker: ModelTracker;
 let connectionsTreeDataProvider: ConnectionsTreeDataProvider;
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('Controller for GitHub Copilot extension activating...');
+    console.log('Controller for GitHub Copilot activating...');
 
     // Initialize the model tracker
     modelTracker = ModelTracker.getInstance();
@@ -189,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     }
 
-    console.log('Controller for GitHub Copilot extension activated');
+    console.log('Controller for GitHub Copilot activated');
 }
 
 function updateStatusBar(running: boolean, connectionCount: number = 0) {
