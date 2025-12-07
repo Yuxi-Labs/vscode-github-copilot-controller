@@ -190,11 +190,7 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "@types/react-syntax-highlighter": "^15.5.13",
     "node-pty": "^1.1.0-beta9",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.0",
-    "remark-gfm": "^4.0.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
