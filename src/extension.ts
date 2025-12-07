@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
 import { Controller } from './controller';
 import { ModelTracker } from './model-tracker';
+import { ConnectionsTreeDataProvider } from './connections-view';
 
 let controller: Controller | null = null;
 let statusBarItem: vscode.StatusBarItem;
 let modelTracker: ModelTracker;
+let connectionsTreeDataProvider: ConnectionsTreeDataProvider;
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('Copilot Controller extension activating...');
+    console.log('Controller for GitHub Copilot extension activating...');
 
     // Initialize the model tracker
     modelTracker = ModelTracker.getInstance();
@@ -25,12 +27,27 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize model tracker with the controller's output channel
     modelTracker.initialize(controller.getOutputChannel());
 
+    // Register connections tree view
+    connectionsTreeDataProvider = new ConnectionsTreeDataProvider(controller);
+    const treeView = vscode.window.createTreeView('copilotControllerConnections', {
+        treeDataProvider: connectionsTreeDataProvider,
+        showCollapseAll: false
+    });
+    context.subscriptions.push(treeView);
+
+    // Listen to connection count changes and update status bar
+    context.subscriptions.push(
+        controller.onConnectionCountChange((count) => {
+            updateStatusBar(controller?.isRunning() || false, count);
+        })
+    );
+
     // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('copilot-controller.start', async () => {
             try {
                 await controller?.start();
-                updateStatusBar(true);
+                updateStatusBar(true, controller?.getActiveConnectionCount() || 0);
             } catch (err) {
                 vscode.window.showErrorMessage(`Failed to start: ${err}`);
             }
@@ -38,13 +55,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand('copilot-controller.stop', async () => {
             await controller?.stop();
-            updateStatusBar(false);
+            updateStatusBar(false, 0);
         }),
 
         vscode.commands.registerCommand('copilot-controller.showStatus', async () => {
             if (!controller?.isRunning()) {
                 const action = await vscode.window.showInformationMessage(
-                    'Copilot Controller is not running',
+                    'Controller for GitHub Copilot is not running',
                     'Start'
                 );
                 if (action === 'Start') {
@@ -58,7 +75,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const modelList = models.map(m => m.name).join(', ') || 'None available';
             
             const message = [
-                `🟢 Controller running on port ${info.local.split(':').pop()}`,
+                `🟢 Controller for GitHub Copilot running on port ${info.local.split(':').pop()}`,
                 ``,
                 `Available models: ${modelList}`,
                 `Pass "model" in request to select one`,
@@ -92,7 +109,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand('copilot-controller.copyConnectionInfo', async () => {
             if (!controller?.isRunning()) {
-                vscode.window.showWarningMessage('Controller is not running');
+                vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
                 return;
             }
 
@@ -109,6 +126,55 @@ export async function activate(context: vscode.ExtensionContext) {
 
             await vscode.env.clipboard.writeText(JSON.stringify(connectionData, null, 2));
             vscode.window.showInformationMessage('Connection info copied to clipboard');
+        }),
+
+        vscode.commands.registerCommand('copilot-controller.manageDevices', async () => {
+            if (!controller?.isRunning()) {
+                vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
+                return;
+            }
+
+            const devices = controller.getConnectedDevices();
+            
+            if (devices.length === 0) {
+                vscode.window.showInformationMessage('No devices currently paired');
+                return;
+            }
+
+            // Show quick pick with devices
+            const items = devices.map(device => ({
+                label: device.deviceName,
+                description: `Last used: ${new Date(device.lastUsed).toLocaleString()}`,
+                detail: `Device ID: ${device.deviceId}`,
+                device
+            }));
+
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: 'Select a device to manage'
+            });
+
+            if (!selected) {
+                return;
+            }
+
+            // Ask what to do
+            const action = await vscode.window.showQuickPick(
+                ['Revoke Access', 'Cancel'],
+                { placeHolder: `Manage ${selected.device.deviceName}` }
+            );
+
+            if (action === 'Revoke Access') {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Revoke access for "${selected.device.deviceName}"? The device will need to pair again.`,
+                    'Revoke',
+                    'Cancel'
+                );
+
+                if (confirm === 'Revoke') {
+                    controller.revokeDevice(selected.device.deviceId);
+                    vscode.window.showInformationMessage(`Revoked access for ${selected.device.deviceName}`);
+                }
+            }
         })
     );
 
@@ -117,23 +183,29 @@ export async function activate(context: vscode.ExtensionContext) {
     if (config.get('autoStart', false)) {
         try {
             await controller.start();
-            updateStatusBar(true);
+            updateStatusBar(true, 0);
         } catch (err) {
             console.error('Failed to auto-start:', err);
         }
     }
 
-    console.log('Copilot Controller extension activated');
+    console.log('Controller for GitHub Copilot extension activated');
 }
 
-function updateStatusBar(running: boolean) {
+function updateStatusBar(running: boolean, connectionCount: number = 0) {
     if (running) {
-        statusBarItem.text = '$(broadcast) Controller';
-        statusBarItem.tooltip = 'Copilot Controller running\nClick for status';
-        statusBarItem.backgroundColor = undefined;
+        if (connectionCount > 0) {
+            statusBarItem.text = `$(broadcast) Controller for GitHub Copilot (${connectionCount})`;
+            statusBarItem.tooltip = `Controller for GitHub Copilot: ${connectionCount} active connection${connectionCount === 1 ? '' : 's'}\nClick for status`;
+            statusBarItem.backgroundColor = undefined;
+        } else {
+            statusBarItem.text = '$(broadcast) Controller for GitHub Copilot';
+            statusBarItem.tooltip = 'Controller for GitHub Copilot running - No active connections\nClick for status';
+            statusBarItem.backgroundColor = undefined;
+        }
     } else {
-        statusBarItem.text = '$(circle-slash) Copilot Controller';
-        statusBarItem.tooltip = 'Copilot Controller is stopped - Click to start';
+        statusBarItem.text = '$(circle-slash) Controller for GitHub Copilot';
+        statusBarItem.tooltip = 'Controller for GitHub Copilot is stopped - Click to start';
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     }
 }

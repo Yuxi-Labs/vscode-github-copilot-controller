@@ -38,3 +38,5 @@ coverage/
 
 # VS Code test runner
 .vscode-test/
+
+_docs/design.md

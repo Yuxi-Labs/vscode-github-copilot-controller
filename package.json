@@ -46,8 +46,21 @@
         "command": "copilot-controller.copyConnectionInfo",
         "title": "Copy Connection Info",
         "category": "Copilot Controller"
+      },
+      {
+        "command": "copilot-controller.manageDevices",
+        "title": "Manage Devices",
+        "category": "Copilot Controller"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "copilotControllerConnections",
+          "name": "Copilot Controller"
+        }
+      ]
+    },
     "configuration": {
       "title": "Copilot Controller",
       "properties": {
@@ -80,6 +93,84 @@
             "*"
           ],
           "description": "Allowed origins for CORS"
+        },
+        "copilotController.logLevel": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
+          "default": "info",
+          "description": "Logging level (error, warn, info, debug)"
+        },
+        "copilotController.rateLimit": {
+          "type": "object",
+          "default": {
+            "enabled": true,
+            "maxRequests": 60,
+            "windowSeconds": 60
+          },
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "maxRequests": {
+              "type": "number",
+              "default": 60
+            },
+            "windowSeconds": {
+              "type": "number",
+              "default": 60
+            }
+          },
+          "description": "Rate limiting configuration (max requests per window)"
+        },
+        "copilotController.maxQueueSize": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 1000,
+          "description": "Maximum number of messages to queue for offline clients"
+        },
+        "copilotController.ipAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "IP addresses or patterns allowed to connect (e.g., 192.168.1.*, 10.0.0.0/24). Empty = allow all."
+        },
+        "copilotController.ipBlocklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "IP addresses or patterns blocked from connecting (takes precedence over allowlist)"
+        },
+        "copilotController.encryption": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "key": null
+          },
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "key": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "description": "End-to-end encryption with AES-256-GCM (key must be 32 bytes hex)"
         }
       }
     }
@@ -99,7 +190,11 @@
     "test": "vscode-test"
   },
   "dependencies": {
+    "@types/react-syntax-highlighter": "^15.5.13",
     "node-pty": "^1.1.0-beta9",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.0",
+    "remark-gfm": "^4.0.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

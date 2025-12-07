@@ -1,12 +1,63 @@
 import * as vscode from 'vscode';
 import { 
     ChatPayload, 
+    ChatMode,
     ChunkPayload, 
     DonePayload, 
     ErrorPayload, 
     PendingRequest 
 } from './types';
 import { ModelTracker } from './model-tracker';
+
+// Mode-specific system prompts
+const MODE_PROMPTS: Record<ChatMode, string> = {
+    agent: `You are an autonomous coding agent with full capabilities:
+- You can execute terminal commands by wrapping them in <terminal>command</terminal> tags
+- You can create or edit files by wrapping content in <file path="path/to/file">content</file> tags
+- You can read files by requesting <readFile path="path/to/file"/>
+- You can open files in the editor with <openFile path="path/to/file" line="1"/>
+- Take initiative to complete tasks end-to-end
+- Run tests, install dependencies, and verify your work
+- If something fails, debug and fix it autonomously
+When you need to perform actions, use the appropriate tags and the system will execute them.`,
+
+    ask: `You are a helpful coding assistant in Ask mode:
+- Answer questions about code, concepts, and best practices
+- Explain code snippets and algorithms
+- Provide code examples when helpful
+- Do NOT make changes to files directly
+- Do NOT execute terminal commands
+- Focus on providing accurate, educational responses
+If the user wants you to make changes, suggest they switch to Agent or Edit mode.`,
+
+    edit: `You are a precise code editor in Edit mode:
+- Make targeted, surgical edits to the specified code
+- When given a selection, focus only on improving that section
+- Preserve the overall structure and style of the code
+- Output your edits in a clear format:
+  <edit file="path/to/file" startLine="X" endLine="Y">
+  new code here
+  </edit>
+- Explain what changes you're making and why
+- Do NOT add unrelated changes or refactor beyond the request`,
+
+    plan: `You are a strategic coding planner in Plan mode:
+- Break down complex tasks into clear, actionable steps
+- Create numbered step-by-step plans
+- Identify potential challenges and solutions
+- Estimate complexity for each step
+- Do NOT execute any actions or make changes
+- Format your plans clearly:
+  ## Plan: [Task Name]
+  
+  ### Step 1: [Step Title]
+  - Description of what needs to be done
+  - Files involved: [list files]
+  - Estimated complexity: [Low/Medium/High]
+  
+  ### Step 2: ...
+- Ask clarifying questions if the task is ambiguous`
+};
 
 /**
  * Bridge between remote clients and VS Code's Copilot Language Model API
@@ -16,9 +67,22 @@ export class CopilotBridge {
     private conversationHistory: vscode.LanguageModelChatMessage[] = [];
     private maxHistoryLength = 50;
     private modelTracker: ModelTracker;
+    private currentMode: ChatMode = 'agent';
 
     constructor() {
         this.modelTracker = ModelTracker.getInstance();
+    }
+
+    /**
+     * Get the system prompt for the current mode
+     */
+    private getSystemPrompt(mode: ChatMode, modelName: string): string {
+        const modePrompt = MODE_PROMPTS[mode];
+        return `You are ${modelName}, an AI assistant operating in ${mode.toUpperCase()} mode.
+
+${modePrompt}
+
+You are being accessed through a remote client application connected to VS Code. When asked about your identity, accurately identify yourself as ${modelName}.`;
     }
 
     /**
@@ -32,10 +96,12 @@ export class CopilotBridge {
         onError: (error: ErrorPayload) => void
     ): Promise<void> {
         try {
-            console.log(`[CopilotBridge] Request received. Requested model: "${payload.model}"`);
+            const mode = payload.mode || 'agent';
+            this.currentMode = mode;
+            
+            console.log(`[CopilotBridge] Request received. Mode: ${mode}, Model: "${payload.model}"`);
             
             // Use the ModelTracker to get the appropriate model
-            // This respects the user's selected model in VS Code
             const model = await this.modelTracker.getModelForRequest(payload.model);
 
             if (!model) {
@@ -51,9 +117,19 @@ export class CopilotBridge {
 
             console.log(`[CopilotBridge] Using model: ${model.name} (${model.id})`);
 
+            // Build the user message with any edit context
+            let userMessage = payload.message;
+            if (mode === 'edit' && payload.targetFile) {
+                userMessage = `Target file: ${payload.targetFile}\n`;
+                if (payload.selection) {
+                    userMessage += `Selected lines ${payload.selection.startLine}-${payload.selection.endLine}:\n\`\`\`\n${payload.selection.text}\n\`\`\`\n\n`;
+                }
+                userMessage += `Edit request: ${payload.message}`;
+            }
+
             // Add user message to history
             this.conversationHistory.push(
-                vscode.LanguageModelChatMessage.User(payload.message)
+                vscode.LanguageModelChatMessage.User(userMessage)
             );
 
             // Trim history if too long
@@ -61,13 +137,12 @@ export class CopilotBridge {
                 this.conversationHistory = this.conversationHistory.slice(-this.maxHistoryLength);
             }
 
-            // Build messages array with system context
-            // The first message provides context about the model's identity
-            const systemContext = `You are ${model.name}, an AI assistant. When asked about your identity, you should accurately identify yourself as ${model.name}. You are being accessed through a remote client application connected to VS Code.`;
+            // Build messages array with mode-specific system context
+            const systemContext = this.getSystemPrompt(mode, model.name);
             
             const messagesWithContext: vscode.LanguageModelChatMessage[] = [
                 vscode.LanguageModelChatMessage.User(systemContext),
-                vscode.LanguageModelChatMessage.Assistant("Understood. I am " + model.name + " and will identify myself accurately when asked."),
+                vscode.LanguageModelChatMessage.Assistant(`Understood. I am ${model.name} operating in ${mode.toUpperCase()} mode. I will follow the mode-specific guidelines.`),
                 ...this.conversationHistory
             ];
 
@@ -146,6 +221,13 @@ export class CopilotBridge {
                 });
             }
         }
+    }
+
+    /**
+     * Get current mode
+     */
+    getCurrentMode(): ChatMode {
+        return this.currentMode;
     }
 
     /**

@@ -11,9 +11,14 @@ export interface ClientMessage {
 }
 
 export type ClientMessageType = 
+    | 'auth'           // Legacy auth with token
+    | 'pairRequest'    // Request device pairing
     | 'chat'
     | 'cancel'
     | 'ping'
+    | 'setBatteryMode'    // Update battery mode for adaptive behavior
+    | 'setBandwidthMode'  // Update bandwidth mode for optimization
+    | 'getQualityMetrics' // Request connection quality metrics
     | 'models'
     | 'context'
     | 'files'      // List files in a directory
@@ -21,13 +26,26 @@ export type ClientMessageType =
     | 'writeFile'  // Write/create file
     | 'editFile'   // Apply edits to a file
     | 'openFile'   // Open file in VS Code editor
-    | 'terminal'   // Execute terminal command
+    | 'terminal'       // Execute terminal command (legacy)
+    | 'terminalSpawn'  // Spawn interactive shell
+    | 'terminalInput'  // Send input to terminal
+    | 'terminalResize' // Resize terminal
     | 'terminalKill';  // Kill a running terminal
+
+// Chat modes
+export type ChatMode = 'agent' | 'ask' | 'edit' | 'plan';
 
 export interface ChatPayload {
     message: string;
     model?: string;
+    mode?: ChatMode;           // Chat mode (agent, ask, edit, plan)
     includeContext?: boolean;  // Include active file context
+    targetFile?: string;       // For edit mode - file to edit
+    selection?: {              // For edit mode - selection to edit
+        startLine: number;
+        endLine: number;
+        text: string;
+    };
 }
 
 export interface CancelPayload {
@@ -63,10 +81,18 @@ export interface ControllerMessage {
 }
 
 export type ControllerMessageType =
+    | 'authRequired'    // Auth token required
+    | 'authSuccess'     // Legacy auth succeeded
+    | 'pairPending'     // Pairing request pending approval
+    | 'pairApproved'    // Pairing approved, session token issued
+    | 'pairRejected'    // Pairing rejected by user
     | 'chunk'
     | 'done'
     | 'error'
     | 'pong'
+    | 'batteryModeSet'     // Battery mode updated
+    | 'bandwidthModeSet'   // Bandwidth mode updated
+    | 'qualityMetrics'     // Connection quality metrics
     | 'status'
     | 'models'
     | 'context'
@@ -181,11 +207,34 @@ export interface OpenResultResponse {
 
 // ============ Terminal Types ============
 
+// Legacy command execution
 export interface TerminalPayload {
     command: string;
     cwd?: string;           // Working directory (relative to workspace)
     env?: Record<string, string>;  // Environment variables
     shell?: string;         // Shell to use (e.g., 'powershell', 'bash')
+}
+
+// Spawn an interactive shell
+export interface TerminalSpawnPayload {
+    terminalId: string;     // Client-assigned terminal ID
+    cwd?: string;           // Working directory (relative to workspace)
+    shell?: string;         // Shell to use (e.g., 'powershell', 'bash')
+    cols?: number;          // Terminal columns
+    rows?: number;          // Terminal rows
+}
+
+// Send input to terminal
+export interface TerminalInputPayload {
+    terminalId: string;
+    data: string;           // Raw input data (including escape sequences)
+}
+
+// Resize terminal
+export interface TerminalResizePayload {
+    terminalId: string;
+    cols: number;
+    rows: number;
 }
 
 export interface TerminalKillPayload {
@@ -195,6 +244,7 @@ export interface TerminalKillPayload {
 export interface TerminalOutputResponse {
     terminalId: string;
     output: string;
+    shellType?: string;     // Type of shell (pwsh, powershell, bash, cmd, etc)
     isError: boolean;       // stderr vs stdout
 }
 
@@ -217,6 +267,41 @@ export interface AuthResponse {
     error?: string;
 }
 
+// ============ Device Pairing ============
+
+export interface PairRequestPayload {
+    deviceName: string;      // User-friendly device name (e.g., "John's Laptop")
+    deviceId: string;        // Unique device identifier
+    clientVersion?: string;  // Client app version
+}
+
+export interface PairPendingResponse {
+    pairingId: string;       // ID to track this pairing request
+    status: 'pending';
+    message: string;
+}
+
+export interface PairApprovedResponse {
+    pairingId: string;
+    status: 'approved';
+    sessionToken: string;    // Permanent session token for this device
+    deviceId: string;
+}
+
+export interface PairRejectedResponse {
+    pairingId: string;
+    status: 'rejected';
+    reason: string;
+}
+
+export interface DeviceSession {
+    deviceId: string;
+    deviceName: string;
+    sessionToken: string;
+    createdAt: number;
+    lastUsed: number;
+}
+
 // ============ Internal Types ============
 
 export interface PendingRequest {
@@ -229,6 +314,27 @@ export interface PendingRequest {
 export interface ClientConnection {
     id: string;
     authenticated: boolean;
+    sessionToken?: string;   // Session token if using device pairing
+    deviceId?: string;       // Device ID if using device pairing
+    deviceName?: string;     // Device name if using device pairing
     connectedAt: number;
     lastActivity: number;
+    bytesSent: number;       // Total bytes sent to client
+    bytesReceived: number;   // Total bytes received from client
+    messagesSent: number;    // Total messages sent to client
+    messagesReceived: number; // Total messages received from client
+    rateLimitTokens: number; // Token bucket for rate limiting
+    rateLimitLastRefill: number; // Last time tokens were refilled
+    messageQueue: ControllerMessage[]; // Queued messages when client offline
+    // Connection quality metrics
+    latency: number;         // Average round-trip latency in ms
+    latencySamples: number[]; // Recent latency samples for averaging
+    lastPingTime: number;    // When last ping was sent
+    packetLoss: number;      // Packet loss percentage (0-100)
+    pongReceived: number;    // Total pongs received
+    pongExpected: number;    // Total pongs expected
+    // Mobile optimization
+    batteryMode: 'normal' | 'low' | 'critical'; // Battery-aware mode
+    bandwidthMode: 'normal' | 'low';  // Bandwidth mode
+    compressionLevel: number; // Dynamic compression level (0-9)
 }
