@@ -21,9 +21,9 @@ code --install-extension vscode-github-copilot-controller-0.0.1.vsix
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `copilotController.autoStart` | `false` | Auto-start when VS Code opens |
-| `copilotController.port` | `3712` | Port to listen on |
-| `copilotController.authToken` | (auto) | Authentication token |
+| `githubCopilotController.autoStart` | `true` | Auto-start when VS Code opens |
+| `githubCopilotController.port` | `3712` | Port to listen on |
+| `githubCopilotController.authToken` | (auto) | Authentication token |
 
 ## Requirements
 

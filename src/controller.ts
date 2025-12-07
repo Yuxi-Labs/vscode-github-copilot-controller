@@ -79,7 +79,7 @@ export class Controller {
         this.terminalManager.setOutputChannel(this.outputChannel);
         
         // Load config
-        const config = vscode.workspace.getConfiguration('copilotController');
+        const config = vscode.workspace.getConfiguration('githubCopilotController');
         this.port = config.get('port', 3712);
         this.allowedOrigins = config.get('allowedOrigins', ['*']);
         this.logLevel = config.get('logLevel', 'info') as 'error' | 'warn' | 'info' | 'debug';
@@ -111,7 +111,7 @@ export class Controller {
             token = crypto.randomBytes(32).toString('hex');
             this.context.globalState.update('authToken', token);
             
-            vscode.workspace.getConfiguration('copilotController')
+            vscode.workspace.getConfiguration('githubCopilotController')
                 .update('authToken', token, vscode.ConfigurationTarget.Global);
         }
         return token;
@@ -241,7 +241,7 @@ export class Controller {
         ssePath: string;
         encryption?: { enabled: boolean; keyLength?: number };
     } {
-        const config = vscode.workspace.getConfiguration('copilotController');
+        const config = vscode.workspace.getConfiguration('githubCopilotController');
         const tunnelUrl = config.get<string>('tunnelUrl', '');
         
         return {

@@ -10,9 +10,9 @@ suite('Extension', () => {
     test('commands should be registered', async () => {
         const commands = await vscode.commands.getCommands(true);
         
-        assert.ok(commands.includes('copilot-controller.start'));
-        assert.ok(commands.includes('copilot-controller.stop'));
-        assert.ok(commands.includes('copilot-controller.showStatus'));
-        assert.ok(commands.includes('copilot-controller.copyConnectionInfo'));
+        assert.ok(commands.includes('github-copilot-controller.start'));
+        assert.ok(commands.includes('github-copilot-controller.stop'));
+        assert.ok(commands.includes('github-copilot-controller.showStatus'));
+        assert.ok(commands.includes('github-copilot-controller.copyConnectionInfo'));
     });
 });

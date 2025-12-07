@@ -28,27 +28,27 @@
   "contributes": {
     "commands": [
       {
-        "command": "copilot-controller.start",
+        "command": "github-copilot-controller.start",
         "title": "Start",
         "category": "Controller for GitHub Copilot"
       },
       {
-        "command": "copilot-controller.stop",
+        "command": "github-copilot-controller.stop",
         "title": "Stop",
         "category": "Controller for GitHub Copilot"
       },
       {
-        "command": "copilot-controller.showStatus",
+        "command": "github-copilot-controller.showStatus",
         "title": "Show Status",
         "category": "Controller for GitHub Copilot"
       },
       {
-        "command": "copilot-controller.copyConnectionInfo",
+        "command": "github-copilot-controller.copyConnectionInfo",
         "title": "Copy Connection Info",
         "category": "Controller for GitHub Copilot"
       },
       {
-        "command": "copilot-controller.manageDevices",
+        "command": "github-copilot-controller.manageDevices",
         "title": "Manage Devices",
         "category": "Controller for GitHub Copilot"
       }
@@ -56,7 +56,7 @@
     "views": {
       "explorer": [
         {
-          "id": "copilotControllerConnections",
+          "id": "githubCopilotControllerConnections",
           "name": "Controller for GitHub Copilot"
         }
       ]
@@ -64,27 +64,27 @@
     "configuration": {
       "title": "Controller for GitHub Copilot",
       "properties": {
-        "copilotController.autoStart": {
+        "githubCopilotController.autoStart": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically start the controller when VS Code opens"
         },
-        "copilotController.port": {
+        "githubCopilotController.port": {
           "type": "number",
           "default": 3712,
           "description": "Port to listen on"
         },
-        "copilotController.authToken": {
+        "githubCopilotController.authToken": {
           "type": "string",
           "default": "",
           "description": "Authentication token (auto-generated if empty)"
         },
-        "copilotController.tunnelUrl": {
+        "githubCopilotController.tunnelUrl": {
           "type": "string",
           "default": "",
           "description": "External tunnel URL for remote access"
         },
-        "copilotController.allowedOrigins": {
+        "githubCopilotController.allowedOrigins": {
           "type": "array",
           "items": {
             "type": "string"
@@ -94,7 +94,7 @@
           ],
           "description": "Allowed origins for CORS"
         },
-        "copilotController.logLevel": {
+        "githubCopilotController.logLevel": {
           "type": "string",
           "enum": [
             "error",
@@ -105,7 +105,7 @@
           "default": "info",
           "description": "Logging level (error, warn, info, debug)"
         },
-        "copilotController.rateLimit": {
+        "githubCopilotController.rateLimit": {
           "type": "object",
           "default": {
             "enabled": true,
@@ -128,14 +128,14 @@
           },
           "description": "Rate limiting configuration (max requests per window)"
         },
-        "copilotController.maxQueueSize": {
+        "githubCopilotController.maxQueueSize": {
           "type": "number",
           "default": 100,
           "minimum": 10,
           "maximum": 1000,
           "description": "Maximum number of messages to queue for offline clients"
         },
-        "copilotController.ipAllowlist": {
+        "githubCopilotController.ipAllowlist": {
           "type": "array",
           "items": {
             "type": "string"
@@ -143,7 +143,7 @@
           "default": [],
           "description": "IP addresses or patterns allowed to connect (e.g., 192.168.1.*, 10.0.0.0/24). Empty = allow all."
         },
-        "copilotController.ipBlocklist": {
+        "githubCopilotController.ipBlocklist": {
           "type": "array",
           "items": {
             "type": "string"
@@ -151,7 +151,7 @@
           "default": [],
           "description": "IP addresses or patterns blocked from connecting (takes precedence over allowlist)"
         },
-        "copilotController.encryption": {
+        "githubCopilotController.encryption": {
           "type": "object",
           "default": {
             "enabled": false,

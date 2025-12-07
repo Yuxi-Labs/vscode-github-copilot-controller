@@ -16,7 +16,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBarItem.command = 'copilot-controller.showStatus';
+    statusBarItem.command = 'github-copilot-controller.showStatus';
     updateStatusBar(false);
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
@@ -29,7 +29,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register connections tree view
     connectionsTreeDataProvider = new ConnectionsTreeDataProvider(controller);
-    const treeView = vscode.window.createTreeView('copilotControllerConnections', {
+    const treeView = vscode.window.createTreeView('githubCopilotControllerConnections', {
         treeDataProvider: connectionsTreeDataProvider,
         showCollapseAll: false
     });
@@ -58,14 +58,14 @@ export async function activate(context: vscode.ExtensionContext) {
             updateStatusBar(false, 0);
         }),
 
-        vscode.commands.registerCommand('copilot-controller.showStatus', async () => {
+        vscode.commands.registerCommand('github-copilot-controller.showStatus', async () => {
             if (!controller?.isRunning()) {
                 const action = await vscode.window.showInformationMessage(
                     'Controller for GitHub Copilot is not running',
                     'Start'
                 );
                 if (action === 'Start') {
-                    vscode.commands.executeCommand('copilot-controller.start');
+                    vscode.commands.executeCommand('github-copilot-controller.start');
                 }
                 return;
             }
@@ -96,18 +96,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
             switch (action) {
                 case 'Copy Connection Info':
-                    vscode.commands.executeCommand('copilot-controller.copyConnectionInfo');
+                    vscode.commands.executeCommand('github-copilot-controller.copyConnectionInfo');
                     break;
                 case 'Show Logs':
                     controller.getOutputChannel().show();
                     break;
                 case 'Stop':
-                    vscode.commands.executeCommand('copilot-controller.stop');
+                    vscode.commands.executeCommand('github-copilot-controller.stop');
                     break;
             }
         }),
 
-        vscode.commands.registerCommand('copilot-controller.copyConnectionInfo', async () => {
+        vscode.commands.registerCommand('github-copilot-controller.copyConnectionInfo', async () => {
             if (!controller?.isRunning()) {
                 vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
                 return;
@@ -128,7 +128,7 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage('Connection info copied to clipboard');
         }),
 
-        vscode.commands.registerCommand('copilot-controller.manageDevices', async () => {
+        vscode.commands.registerCommand('github-copilot-controller.manageDevices', async () => {
             if (!controller?.isRunning()) {
                 vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
                 return;
@@ -179,7 +179,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Auto-start if configured
-    const config = vscode.workspace.getConfiguration('copilotController');
+    const config = vscode.workspace.getConfiguration('githubCopilotController');
     if (config.get('autoStart', false)) {
         try {
             await controller.start();
