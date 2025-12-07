@@ -1,4 +1,4 @@
-# Quick reinstall script for the controller extension
+# Install script for the controller extension
 Write-Host "Cleaning old builds..." -ForegroundColor Cyan
 Remove-Item -Path "*.vsix" -Force -ErrorAction SilentlyContinue
 

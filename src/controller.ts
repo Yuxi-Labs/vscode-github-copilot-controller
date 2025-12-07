@@ -217,7 +217,7 @@ export class Controller {
             this.httpListener!.close(() => {
                 this.httpListener = null;
                 this.log('Controller stopped');
-                vscode.window.showInformationMessage('Copilot Controller stopped');
+                vscode.window.showInformationMessage('Controller for GitHub Copilot stopped');
                 resolve();
             });
         });

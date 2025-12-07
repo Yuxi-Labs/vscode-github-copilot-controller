@@ -30,39 +30,39 @@
       {
         "command": "copilot-controller.start",
         "title": "Start",
-        "category": "Copilot Controller"
+        "category": "Controller for GitHub Copilot"
       },
       {
         "command": "copilot-controller.stop",
         "title": "Stop",
-        "category": "Copilot Controller"
+        "category": "Controller for GitHub Copilot"
       },
       {
         "command": "copilot-controller.showStatus",
         "title": "Show Status",
-        "category": "Copilot Controller"
+        "category": "Controller for GitHub Copilot"
       },
       {
         "command": "copilot-controller.copyConnectionInfo",
         "title": "Copy Connection Info",
-        "category": "Copilot Controller"
+        "category": "Controller for GitHub Copilot"
       },
       {
         "command": "copilot-controller.manageDevices",
         "title": "Manage Devices",
-        "category": "Copilot Controller"
+        "category": "Controller for GitHub Copilot"
       }
     ],
     "views": {
       "explorer": [
         {
           "id": "copilotControllerConnections",
-          "name": "Copilot Controller"
+          "name": "Controller for GitHub Copilot"
         }
       ]
     },
     "configuration": {
-      "title": "Copilot Controller",
+      "title": "Controller for GitHub Copilot",
       "properties": {
         "copilotController.autoStart": {
           "type": "boolean",
