@@ -44,7 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('copilot-controller.start', async () => {
+        vscode.commands.registerCommand('github-copilot-controller.start', async () => {
             try {
                 await controller?.start();
                 updateStatusBar(true, controller?.getActiveConnectionCount() || 0);
@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }),
 
-        vscode.commands.registerCommand('copilot-controller.stop', async () => {
+        vscode.commands.registerCommand('github-copilot-controller.stop', async () => {
             await controller?.stop();
             updateStatusBar(false, 0);
         }),
@@ -195,17 +195,17 @@ export async function activate(context: vscode.ExtensionContext) {
 function updateStatusBar(running: boolean, connectionCount: number = 0) {
     if (running) {
         if (connectionCount > 0) {
-            statusBarItem.text = `$(broadcast) Controller for GitHub Copilot (${connectionCount})`;
-            statusBarItem.tooltip = `Controller for GitHub Copilot: ${connectionCount} active connection${connectionCount === 1 ? '' : 's'}\nClick for status`;
+            statusBarItem.text = `$(broadcast) GitHub Copilot Controller (${connectionCount})`;
+            statusBarItem.tooltip = `GitHub Copilot Controller: ${connectionCount} active connection${connectionCount === 1 ? '' : 's'}\nClick for status`;
             statusBarItem.backgroundColor = undefined;
         } else {
-            statusBarItem.text = '$(broadcast) Controller for GitHub Copilot';
-            statusBarItem.tooltip = 'Controller for GitHub Copilot running - No active connections\nClick for status';
+            statusBarItem.text = '$(broadcast) GitHub Copilot Controller';
+            statusBarItem.tooltip = 'GitHub Copilot Controller running - No active connections\nClick for status';
             statusBarItem.backgroundColor = undefined;
         }
     } else {
-        statusBarItem.text = '$(circle-slash) Controller for GitHub Copilot';
-        statusBarItem.tooltip = 'Controller for GitHub Copilot is stopped - Click to start';
+        statusBarItem.text = '$(circle-slash) GitHub Copilot Controller';
+        statusBarItem.tooltip = 'GitHub Copilot Controller is stopped - Click to start';
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     }
 }

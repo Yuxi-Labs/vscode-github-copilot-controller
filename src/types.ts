@@ -26,6 +26,10 @@ export type ClientMessageType =
     | 'writeFile'  // Write/create file
     | 'editFile'   // Apply edits to a file
     | 'openFile'   // Open file in VS Code editor
+    | 'approveChange'  // Approve a pending file change
+    | 'rejectChange'   // Reject a pending file change
+    | 'batchApprove'   // Approve multiple changes
+    | 'batchReject'    // Reject multiple changes
     | 'terminal'       // Execute terminal command (legacy)
     | 'terminalSpawn'  // Spawn interactive shell
     | 'terminalInput'  // Send input to terminal
@@ -89,6 +93,10 @@ export type ControllerMessageType =
     | 'chunk'
     | 'done'
     | 'error'
+    | 'toolCall'        // Tool call progress update
+    | 'pendingChange'   // File change awaiting approval
+    | 'changeApproved'  // Change successfully applied
+    | 'changeRejected'  // Change rejected
     | 'pong'
     | 'batteryModeSet'     // Battery mode updated
     | 'bandwidthModeSet'   // Bandwidth mode updated
@@ -119,6 +127,18 @@ export interface ErrorPayload {
     requestId?: string;
     code: string;
     message: string;
+}
+
+export interface ToolCallPayload {
+    requestId: string;
+    toolCall: {
+        id: string;
+        type: 'file_read' | 'file_write' | 'file_edit' | 'terminal' | 'search' | 'thinking';
+        status: 'pending' | 'running' | 'success' | 'error';
+        description: string;
+        details?: string;
+        timestamp: number;
+    };
 }
 
 export interface StatusPayload {
@@ -300,6 +320,46 @@ export interface DeviceSession {
     sessionToken: string;
     createdAt: number;
     lastUsed: number;
+}
+
+// ============ Change Approval Types ============
+
+export interface PendingChangePayload {
+    changeId: string;
+    changeType: 'edit' | 'write';
+    path: string;
+    diff: string;
+    additions: number;
+    deletions: number;
+    timestamp: number;
+}
+
+export interface ApproveChangePayload {
+    changeId: string;
+}
+
+export interface RejectChangePayload {
+    changeId: string;
+}
+
+export interface BatchApprovePayload {
+    changeIds: string[];
+}
+
+export interface BatchRejectPayload {
+    changeIds: string[];
+}
+
+export interface ChangeApprovedPayload {
+    changeId: string;
+    path: string;
+    success: boolean;
+    error?: string;
+}
+
+export interface ChangeRejectedPayload {
+    changeId: string;
+    path: string;
 }
 
 // ============ Internal Types ============

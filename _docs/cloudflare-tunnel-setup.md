@@ -1,12 +1,12 @@
 # Cloudflare Tunnel Setup for Remote Access
 
-This guide explains how to expose your VS Code Copilot Controller to the internet using Cloudflare Tunnel, allowing you to connect from anywhere (different networks, mobile data, etc.).
+This guide explains how to expose your Controller for GitHub Copilot to the internet using Cloudflare Tunnel, allowing you to connect from anywhere (different networks, mobile data, etc.).
 
 ## Prerequisites
 
 - A Cloudflare account (free tier works fine)
-- Your VS Code with the Copilot Controller extension running
-- The controller listening on `localhost:3712` (default)
+- Your VS Code with the Controller for GitHub Copilot extension running
+- The extension listening on `localhost:3712` (default)
 
 ## Step 1: Install cloudflared
 
@@ -121,7 +121,7 @@ sudo systemctl enable cloudflared
 
 ## Step 7: Connect from Remote Pilot
 
-1. **Start VS Code with Controller extension**
+1. **Start VS Code with Controller for GitHub Copilot extension**
 2. **Start the Cloudflare tunnel** (if not running as service)
 3. **In Remote Pilot app:**
    - Open Settings (File → Settings)
@@ -140,12 +140,12 @@ sudo systemctl enable cloudflared
 ## Troubleshooting
 
 ### Tunnel starts but can't connect
-- Verify VS Code controller is running: `Copilot Controller: Show Status`
+- Verify Controller for GitHub Copilot is running: `Controller for GitHub Copilot: Show Status`
 - Check the tunnel is routing to correct port (3712)
 - Ensure WebSocket upgrade is working (Cloudflare handles this automatically)
 
 ### Connection refused
-- Controller might not be started: Run `Copilot Controller: Start`
+- Extension might not be started: Run `Controller for GitHub Copilot: Start`
 - Check firewall isn't blocking local port 3712
 - Verify tunnel config points to `http://localhost:3712` (not https)
 
@@ -159,7 +159,7 @@ Save this as `start-tunnel.ps1` (Windows) or `start-tunnel.sh` (Mac/Linux):
 
 ```powershell
 # Windows PowerShell
-Write-Host "Starting Cloudflare Tunnel for Copilot Controller..." -ForegroundColor Green
+Write-Host "Starting Cloudflare Tunnel for Controller for GitHub Copilot..." -ForegroundColor Green
 
 # Quick temporary tunnel (no setup required)
 cloudflared tunnel --url http://localhost:3712
@@ -171,7 +171,7 @@ cloudflared tunnel --url http://localhost:3712
 ```bash
 #!/bin/bash
 # Mac/Linux
-echo "Starting Cloudflare Tunnel for Copilot Controller..."
+echo "Starting Cloudflare Tunnel for Controller for GitHub Copilot..."
 
 # Quick temporary tunnel (no setup required)
 cloudflared tunnel --url http://localhost:3712

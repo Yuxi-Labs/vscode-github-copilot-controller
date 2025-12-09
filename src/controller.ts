@@ -9,6 +9,7 @@ import { FileBrowser } from './file-browser';
 import { FileEditor } from './file-editor';
 import { TerminalManager } from './terminal-manager';
 import { SessionManager } from './session-manager';
+import { ChangeBuffer } from './change-buffer';
 import {
     ClientMessage,
     ControllerMessage,
@@ -27,7 +28,11 @@ import {
     TerminalSpawnPayload,
     TerminalInputPayload,
     TerminalResizePayload,
-    TerminalKillPayload
+    TerminalKillPayload,
+    ApproveChangePayload,
+    RejectChangePayload,
+    BatchApprovePayload,
+    BatchRejectPayload
 } from './types';
 
 /**
@@ -42,6 +47,7 @@ export class Controller {
     private fileEditor: FileEditor;
     private terminalManager: TerminalManager;
     private sessionManager: SessionManager;
+    private changeBuffer: ChangeBuffer;
     private connections: Map<string, ClientConnection> = new Map();
     private wsClients: Map<string, WebSocket> = new Map();
     private sseClients: Map<string, http.ServerResponse> = new Map();
@@ -74,6 +80,7 @@ export class Controller {
         this.terminalManager = TerminalManager.getInstance();
         this.sessionManager = new SessionManager(context);
         this.outputChannel = vscode.window.createOutputChannel('Controller for GitHub Copilot');
+        this.changeBuffer = new ChangeBuffer(this.outputChannel);
         
         // Share output channel with terminal manager for unified logging
         this.terminalManager.setOutputChannel(this.outputChannel);
@@ -1078,7 +1085,7 @@ export class Controller {
 
         // Wrap in try-catch for graceful error recovery
         try {
-            await this.processMessageType(message, send);
+            await this.processMessageType(message, send, clientId);
         } catch (error) {
             this.logError(`Error processing ${message.type}: ${error}`);
             send({
@@ -1095,7 +1102,7 @@ export class Controller {
     /**
      * Process message by type with error handling
      */
-    private async processMessageType(message: ClientMessage, send: (msg: ControllerMessage) => void): Promise<void> {
+    private async processMessageType(message: ClientMessage, send: (msg: ControllerMessage) => void, connectionId: string): Promise<void> {
         switch (message.type) {
             case 'chat':
                 await this.handleChat(message.id, message.payload as ChatPayload, send);
@@ -1142,15 +1149,31 @@ export class Controller {
                 break;
 
             case 'writeFile':
-                await this.handleWriteFile(message.id, message.payload as WriteFilePayload, send);
+                await this.handleWriteFile(message.id, message.payload as WriteFilePayload, send, connectionId);
                 break;
 
             case 'editFile':
-                await this.handleEditFile(message.id, message.payload as EditFilePayload, send);
+                await this.handleEditFile(message.id, message.payload as EditFilePayload, send, connectionId);
                 break;
 
             case 'openFile':
                 await this.handleOpenFile(message.id, message.payload as OpenFilePayload, send);
+                break;
+
+            case 'approveChange':
+                await this.handleApproveChange(message.id, message.payload as ApproveChangePayload, send);
+                break;
+
+            case 'rejectChange':
+                await this.handleRejectChange(message.id, message.payload as RejectChangePayload, send);
+                break;
+
+            case 'batchApprove':
+                await this.handleBatchApprove(message.id, message.payload as BatchApprovePayload, send);
+                break;
+
+            case 'batchReject':
+                await this.handleBatchReject(message.id, message.payload as BatchRejectPayload, send);
                 break;
 
             case 'terminal':
@@ -1415,6 +1438,13 @@ export class Controller {
                     payload: error
                 });
                 this.log(`Chat request ${requestId} error: ${error.message}`);
+            },
+            (toolCall) => {
+                send({
+                    id: requestId,
+                    type: 'toolCall',
+                    payload: toolCall
+                });
             }
         );
     }
@@ -1531,7 +1561,8 @@ export class Controller {
     private async handleWriteFile(
         messageId: string,
         payload: WriteFilePayload,
-        send: (msg: ControllerMessage) => void
+        send: (msg: ControllerMessage) => void,
+        connectionId: string
     ): Promise<void> {
         try {
             if (!payload?.path) {
@@ -1540,12 +1571,24 @@ export class Controller {
             if (payload.content === undefined) {
                 throw new Error('File content is required');
             }
-            const result = await this.fileEditor.writeFile(payload);
-            this.log(`WriteFile request: path="${payload.path}", success=${result.success}`);
+            
+            // Buffer the change instead of applying immediately
+            const change = await this.changeBuffer.bufferWriteFile(connectionId, payload);
+            this.log(`Buffered write change: ${payload.path} (change ID: ${change.id})`);
+            
+            // Send pending change notification to client
             send({
                 id: messageId,
-                type: 'writeResult',
-                payload: result
+                type: 'pendingChange',
+                payload: {
+                    changeId: change.id,
+                    changeType: 'write',
+                    path: change.path,
+                    diff: change.diff!,
+                    additions: change.additions,
+                    deletions: change.deletions,
+                    timestamp: change.timestamp
+                }
             });
         } catch (err) {
             this.log(`WriteFile request error: ${err}`);
@@ -1560,7 +1603,8 @@ export class Controller {
     private async handleEditFile(
         messageId: string,
         payload: EditFilePayload,
-        send: (msg: ControllerMessage) => void
+        send: (msg: ControllerMessage) => void,
+        connectionId: string
     ): Promise<void> {
         try {
             if (!payload?.path) {
@@ -1569,12 +1613,24 @@ export class Controller {
             if (!payload?.edits || !Array.isArray(payload.edits)) {
                 throw new Error('Edits array is required');
             }
-            const result = await this.fileEditor.editFile(payload);
-            this.log(`EditFile request: path="${payload.path}", edits=${payload.edits.length}, success=${result.success}`);
+            
+            // Buffer the change instead of applying immediately
+            const change = await this.changeBuffer.bufferEditFile(connectionId, payload);
+            this.log(`Buffered edit change: ${payload.path} (${payload.edits.length} edits, change ID: ${change.id})`);
+            
+            // Send pending change notification to client
             send({
                 id: messageId,
-                type: 'editResult',
-                payload: result
+                type: 'pendingChange',
+                payload: {
+                    changeId: change.id,
+                    changeType: 'edit',
+                    path: change.path,
+                    diff: change.diff!,
+                    additions: change.additions,
+                    deletions: change.deletions,
+                    timestamp: change.timestamp
+                }
             });
         } catch (err) {
             this.log(`EditFile request error: ${err}`);
@@ -1608,6 +1664,144 @@ export class Controller {
                 id: messageId,
                 type: 'error',
                 payload: { code: 'OPEN_FILE_ERROR', message: `${err}` }
+            });
+        }
+    }
+
+    // ============ Change Approval Handlers ============
+
+    private async handleApproveChange(
+        messageId: string,
+        payload: ApproveChangePayload,
+        send: (msg: ControllerMessage) => void
+    ): Promise<void> {
+        try {
+            if (!payload?.changeId) {
+                throw new Error('Change ID is required');
+            }
+
+            const result = await this.changeBuffer.approveChange(payload.changeId);
+            this.log(`Approved change: ${payload.changeId}, success=${result.success}`);
+
+            send({
+                id: messageId,
+                type: 'changeApproved',
+                payload: {
+                    changeId: payload.changeId,
+                    path: result.path,
+                    success: result.success,
+                    error: result.error
+                }
+            });
+        } catch (err) {
+            this.log(`ApproveChange error: ${err}`);
+            send({
+                id: messageId,
+                type: 'error',
+                payload: { code: 'APPROVE_CHANGE_ERROR', message: `${err}` }
+            });
+        }
+    }
+
+    private async handleRejectChange(
+        messageId: string,
+        payload: RejectChangePayload,
+        send: (msg: ControllerMessage) => void
+    ): Promise<void> {
+        try {
+            if (!payload?.changeId) {
+                throw new Error('Change ID is required');
+            }
+
+            this.changeBuffer.rejectChange(payload.changeId);
+            const change = this.changeBuffer.getChange(payload.changeId);
+            this.log(`Rejected change: ${payload.changeId}`);
+
+            send({
+                id: messageId,
+                type: 'changeRejected',
+                payload: {
+                    changeId: payload.changeId,
+                    path: change?.path || 'unknown'
+                }
+            });
+        } catch (err) {
+            this.log(`RejectChange error: ${err}`);
+            send({
+                id: messageId,
+                type: 'error',
+                payload: { code: 'REJECT_CHANGE_ERROR', message: `${err}` }
+            });
+        }
+    }
+
+    private async handleBatchApprove(
+        messageId: string,
+        payload: BatchApprovePayload,
+        send: (msg: ControllerMessage) => void
+    ): Promise<void> {
+        try {
+            if (!payload?.changeIds || !Array.isArray(payload.changeIds)) {
+                throw new Error('Change IDs array is required');
+            }
+
+            const results = await this.changeBuffer.batchApprove(payload.changeIds);
+            this.log(`Batch approved ${payload.changeIds.length} changes`);
+
+            // Send individual responses for each change
+            for (const [changeId, result] of results.entries()) {
+                send({
+                    id: `${messageId}-${changeId}`,
+                    type: 'changeApproved',
+                    payload: {
+                        changeId,
+                        path: result.path,
+                        success: result.success,
+                        error: result.error
+                    }
+                });
+            }
+        } catch (err) {
+            this.log(`BatchApprove error: ${err}`);
+            send({
+                id: messageId,
+                type: 'error',
+                payload: { code: 'BATCH_APPROVE_ERROR', message: `${err}` }
+            });
+        }
+    }
+
+    private async handleBatchReject(
+        messageId: string,
+        payload: BatchRejectPayload,
+        send: (msg: ControllerMessage) => void
+    ): Promise<void> {
+        try {
+            if (!payload?.changeIds || !Array.isArray(payload.changeIds)) {
+                throw new Error('Change IDs array is required');
+            }
+
+            this.changeBuffer.batchReject(payload.changeIds);
+            this.log(`Batch rejected ${payload.changeIds.length} changes`);
+
+            // Send confirmation
+            for (const changeId of payload.changeIds) {
+                const change = this.changeBuffer.getChange(changeId);
+                send({
+                    id: `${messageId}-${changeId}`,
+                    type: 'changeRejected',
+                    payload: {
+                        changeId,
+                        path: change?.path || 'unknown'
+                    }
+                });
+            }
+        } catch (err) {
+            this.log(`BatchReject error: ${err}`);
+            send({
+                id: messageId,
+                type: 'error',
+                payload: { code: 'BATCH_REJECT_ERROR', message: `${err}` }
             });
         }
     }

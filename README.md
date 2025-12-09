@@ -4,11 +4,7 @@ A VS Code extension that enables remote access to GitHub Copilot chat from mobil
 
 ## Installation
 
-Install from VS Code Marketplace (coming soon) or from VSIX:
-
-```bash
-code --install-extension vscode-github-copilot-controller-0.0.1.vsix
-```
+Install from VS Code Marketplace (coming soon).
 
 ## Usage
 

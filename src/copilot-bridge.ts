@@ -4,12 +4,13 @@ import {
     ChatMode,
     ChunkPayload, 
     DonePayload, 
-    ErrorPayload, 
+    ErrorPayload,
+    ToolCallPayload,
     PendingRequest 
 } from './types';
 import { ModelTracker } from './model-tracker';
 
-// Mode-specific system prompts
+// Mode-specific system prompts that approximate GitHub Copilot's behavior
 const MODE_PROMPTS: Record<ChatMode, string> = {
     agent: `You are an autonomous coding agent with full capabilities:
 - You can execute terminal commands by wrapping them in <terminal>command</terminal> tags
@@ -19,44 +20,81 @@ const MODE_PROMPTS: Record<ChatMode, string> = {
 - Take initiative to complete tasks end-to-end
 - Run tests, install dependencies, and verify your work
 - If something fails, debug and fix it autonomously
+
+IMPORTANT: All file changes you suggest will be shown to the user for approval before being applied.
+Be specific and concrete - provide actual code, not placeholders or pseudocode.
 When you need to perform actions, use the appropriate tags and the system will execute them.`,
 
     ask: `You are a helpful coding assistant in Ask mode:
 - Answer questions about code, concepts, and best practices
 - Explain code snippets and algorithms
 - Provide code examples when helpful
+- Focus on understanding and explaining, not on making changes
+
+RESTRICTIONS:
 - Do NOT make changes to files directly
 - Do NOT execute terminal commands
-- Focus on providing accurate, educational responses
-If the user wants you to make changes, suggest they switch to Agent or Edit mode.`,
+- Do NOT suggest file operations unless it's to illustrate a concept
+- If the user wants changes made, suggest they switch to edit or agent mode
+
+Focus on providing accurate, educational responses.`,
 
     edit: `You are a precise code editor in Edit mode:
 - Make targeted, surgical edits to the specified code
 - When given a selection, focus only on improving that section
 - Preserve the overall structure and style of the code
-- Output your edits in a clear format:
-  <edit file="path/to/file" startLine="X" endLine="Y">
-  new code here
-  </edit>
 - Explain what changes you're making and why
-- Do NOT add unrelated changes or refactor beyond the request`,
+- Use the <edit> or <file> tags to specify your changes
+
+WORKFLOW:
+1. Understand what the user wants to change
+2. Explain your approach briefly
+3. Output your edits in this format:
+   <edit file="path/to/file" startLine="X" endLine="Y">
+   new code here
+   </edit>
+
+IMPORTANT: All changes will be shown to the user for approval before applying.
+Do NOT add unrelated changes or refactor beyond the request.
+Stay focused on the user's specific edit request.`,
 
     plan: `You are a strategic coding planner in Plan mode:
 - Break down complex tasks into clear, actionable steps
-- Create numbered step-by-step plans
-- Identify potential challenges and solutions
-- Estimate complexity for each step
-- Do NOT execute any actions or make changes
-- Format your plans clearly:
-  ## Plan: [Task Name]
-  
-  ### Step 1: [Step Title]
-  - Description of what needs to be done
-  - Files involved: [list files]
-  - Estimated complexity: [Low/Medium/High]
-  
-  ### Step 2: ...
-- Ask clarifying questions if the task is ambiguous`
+- Create numbered step-by-step plans with clear descriptions
+- Identify which files will be affected by each step
+- Estimate complexity and potential challenges
+- Suggest testing strategies
+
+OUTPUT FORMAT:
+## Plan: [Task Name]
+
+### Overview
+[Brief summary of what needs to be done and why]
+
+### Implementation Steps
+1. **[Step Title]**
+   - Description of what needs to be done
+   - Files involved: [list files]
+   - Estimated complexity: [Low/Medium/High]
+
+2. **[Step Title]**
+   ...
+
+### Considerations
+- Edge cases to handle
+- Testing requirements
+- Potential issues
+
+### Next Steps
+[What to do after the plan is approved]
+
+RESTRICTIONS:
+- Do NOT execute any actions or make changes (that's for agent mode)
+- Do NOT write full implementations (focus on WHAT and WHY, not detailed HOW)
+- Do NOT use action tags (<terminal>, <file>, etc.)
+- If the user wants to start implementation, suggest switching to agent mode
+
+Ask clarifying questions if the task is ambiguous.`
 };
 
 /**
@@ -71,6 +109,70 @@ export class CopilotBridge {
 
     constructor() {
         this.modelTracker = ModelTracker.getInstance();
+    }
+
+    /**
+     * Parse action tags from response and generate tool calls
+     */
+    private parseActionTags(content: string, requestId: string, onToolCall: (toolCall: ToolCallPayload) => void): void {
+        const patterns = [
+            { regex: /<terminal>(.*?)<\/terminal>/gs, type: 'terminal' as const, desc: (match: string) => `Run command: ${match.trim()}` },
+            { regex: /<file path="([^"]+)">(.*?)<\/file>/gs, type: 'file_write' as const, desc: (match: string, path?: string) => `Write file: ${path}` },
+            { regex: /<readFile path="([^"]+)"\s*\/>/g, type: 'file_read' as const, desc: (match: string, path?: string) => `Read file: ${path}` },
+            { regex: /<openFile path="([^"]+)"[^>]*\/>/g, type: 'file_edit' as const, desc: (match: string, path?: string) => `Open file: ${path}` },
+            { regex: /<edit file="([^"]+)"[^>]*>(.*?)<\/edit>/gs, type: 'file_edit' as const, desc: (match: string, path?: string) => `Edit file: ${path}` },
+        ];
+
+        for (const pattern of patterns) {
+            const matches = Array.from(content.matchAll(pattern.regex));
+            for (const match of matches) {
+                const id = `${requestId}-${pattern.type}-${Date.now()}-${Math.random()}`;
+                const path = match[1];
+                const details = match[2] ? (match[2].length > 100 ? match[2].substring(0, 100) + '...' : match[2]) : path;
+                
+                // Send pending
+                onToolCall({
+                    requestId,
+                    toolCall: {
+                        id,
+                        type: pattern.type,
+                        status: 'pending',
+                        description: pattern.desc(match[0], path),
+                        details,
+                        timestamp: Date.now()
+                    }
+                });
+
+                // Simulate execution (in real impl, these would actually execute)
+                setTimeout(() => {
+                    onToolCall({
+                        requestId,
+                        toolCall: {
+                            id,
+                            type: pattern.type,
+                            status: 'running',
+                            description: pattern.desc(match[0], path),
+                            details,
+                            timestamp: Date.now()
+                        }
+                    });
+
+                    setTimeout(() => {
+                        onToolCall({
+                            requestId,
+                            toolCall: {
+                                id,
+                                type: pattern.type,
+                                status: 'success',
+                                description: pattern.desc(match[0], path),
+                                details,
+                                timestamp: Date.now()
+                            }
+                        });
+                    }, 500);
+                }, 100);
+            }
+        }
     }
 
     /**
@@ -93,7 +195,8 @@ You are being accessed through a remote client application connected to VS Code.
         payload: ChatPayload,
         onChunk: (chunk: ChunkPayload) => void,
         onDone: (done: DonePayload) => void,
-        onError: (error: ErrorPayload) => void
+        onError: (error: ErrorPayload) => void,
+        onToolCall?: (toolCall: ToolCallPayload) => void
     ): Promise<void> {
         try {
             const mode = payload.mode || 'agent';
@@ -189,6 +292,11 @@ You are being accessed through a remote client application connected to VS Code.
             this.conversationHistory.push(
                 vscode.LanguageModelChatMessage.Assistant(fullContent)
             );
+
+            // Parse and execute action tags if in agent mode and onToolCall is provided
+            if (mode === 'agent' && onToolCall) {
+                this.parseActionTags(fullContent, requestId, onToolCall);
+            }
 
             // Clean up and send done
             this.pendingRequests.delete(requestId);
