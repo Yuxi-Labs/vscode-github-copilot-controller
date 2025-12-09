@@ -170,6 +170,8 @@ export interface FilesResponse {
     path: string;
     entries: FileEntry[];
     workspaceName: string;
+    workspaceId: string;  // Unique workspace identifier (URI path)
+    workspaceUri: string; // Full workspace URI
 }
 
 export interface FileContentResponse {

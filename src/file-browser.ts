@@ -95,7 +95,9 @@ export class FileBrowser {
         return {
             path: relativePath || '',
             entries,
-            workspaceName: workspaceFolder.name
+            workspaceName: workspaceFolder.name,
+            workspaceId: workspaceFolder.uri.fsPath,
+            workspaceUri: workspaceFolder.uri.toString()
         };
     }
 
