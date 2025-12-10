@@ -61,7 +61,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('github-copilot-controller.showStatus', async () => {
             if (!controller?.isRunning()) {
                 const action = await vscode.window.showInformationMessage(
-                    'Controller for GitHub Copilot is not running',
+                    'GitHub Copilot Controller is not running',
                     'Start'
                 );
                 if (action === 'Start') {
@@ -72,19 +72,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const info = controller.getConnectionInfo();
             const models = await modelTracker.listModels();
-            const modelList = models.map(m => m.name).join(', ') || 'None available';
+            const modelCount = models.length;
             
             const message = [
-                `🟢 Controller for GitHub Copilot running on port ${info.local.split(':').pop()}`,
+                `🟢 GitHub Copilot Controller running on port ${info.local.split(':').pop()}`,
                 ``,
-                `Available models: ${modelList}`,
-                `Pass "model" in request to select one`,
+                `${modelCount} models available`,
                 ``,
                 `Local: ${info.local}`,
                 info.tunnel ? `Tunnel: ${info.tunnel}` : null,
-                ``,
-                `WebSocket: ${info.local}${info.wsPath}`,
-                `SSE: ${info.local}${info.ssePath}`
             ].filter(Boolean).join('\n');
 
             const action = await vscode.window.showInformationMessage(
@@ -109,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand('github-copilot-controller.copyConnectionInfo', async () => {
             if (!controller?.isRunning()) {
-                vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
+                vscode.window.showWarningMessage('GitHub Copilot Controller is not running');
                 return;
             }
 
@@ -130,7 +126,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand('github-copilot-controller.manageDevices', async () => {
             if (!controller?.isRunning()) {
-                vscode.window.showWarningMessage('Controller for GitHub Copilot is not running');
+                vscode.window.showWarningMessage('GitHub Copilot Controller is not running');
                 return;
             }
 

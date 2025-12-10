@@ -79,7 +79,7 @@ export class Controller {
         this.fileEditor = new FileEditor();
         this.terminalManager = TerminalManager.getInstance();
         this.sessionManager = new SessionManager(context);
-        this.outputChannel = vscode.window.createOutputChannel('Controller for GitHub Copilot');
+        this.outputChannel = vscode.window.createOutputChannel('GitHub Copilot Controller');
         this.changeBuffer = new ChangeBuffer(this.outputChannel);
         
         // Share output channel with terminal manager for unified logging
@@ -185,7 +185,7 @@ export class Controller {
                 this.log(`Controller started on port ${this.port}`);
                 this.log(`Auth token: ${this.authToken.substring(0, 8)}...`);
                 vscode.window.showInformationMessage(
-                    `Controller for GitHub Copilot running on port ${this.port}`
+                    `GitHub Copilot Controller running on port ${this.port}`
                 );
                 resolve();
             });
@@ -224,7 +224,7 @@ export class Controller {
             this.httpListener!.close(() => {
                 this.httpListener = null;
                 this.log('Controller stopped');
-                vscode.window.showInformationMessage('Controller for GitHub Copilot stopped');
+                vscode.window.showInformationMessage('GitHub Copilot Controller stopped');
                 resolve();
             });
         });
