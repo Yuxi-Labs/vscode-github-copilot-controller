@@ -172,6 +172,8 @@ export interface FilesResponse {
     workspaceName: string;
     workspaceId: string;  // Unique workspace identifier (URI path)
     workspaceUri: string; // Full workspace URI
+    machineId: string;
+    machineName: string;
 }
 
 export interface FileContentResponse {

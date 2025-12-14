@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
 import { FileEntry, FilesResponse, FileContentResponse } from './types';
 
 /**
@@ -97,7 +98,9 @@ export class FileBrowser {
             entries,
             workspaceName: workspaceFolder.name,
             workspaceId: workspaceFolder.uri.fsPath,
-            workspaceUri: workspaceFolder.uri.toString()
+            workspaceUri: workspaceFolder.uri.toString(),
+            machineId: vscode.env.sessionId,
+            machineName: `VS Code: ${vscode.env.sessionId.substring(0, 8)} (${os.hostname()})`
         };
     }
 
