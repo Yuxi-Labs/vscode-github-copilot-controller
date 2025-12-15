@@ -97,6 +97,9 @@ export type ControllerMessageType =
     | 'pendingChange'   // File change awaiting approval
     | 'changeApproved'  // Change successfully applied
     | 'changeRejected'  // Change rejected
+    | 'fileChanged'     // File changed in VS Code workspace
+    | 'fileCreated'     // File created in VS Code workspace
+    | 'fileDeleted'     // File deleted in VS Code workspace
     | 'pong'
     | 'batteryModeSet'     // Battery mode updated
     | 'bandwidthModeSet'   // Bandwidth mode updated
@@ -364,6 +367,17 @@ export interface ChangeApprovedPayload {
 export interface ChangeRejectedPayload {
     changeId: string;
     path: string;
+}
+
+// ============ File Sync Types ============
+
+export interface FileChangedPayload {
+    path: string;           // Relative path from workspace root
+    changeType: 'changed' | 'created' | 'deleted';
+    timestamp: number;
+    content?: string;       // New content (for changed/created, optional based on size)
+    language?: string;      // Language ID
+    size?: number;          // File size in bytes
 }
 
 // ============ Internal Types ============

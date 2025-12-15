@@ -112,15 +112,95 @@ export class CopilotBridge {
     }
 
     /**
+     * Strip action tags from content for display
+     */
+    private stripActionTags(content: string): string {
+        let stripped = content;
+        
+        // Remove all action tags but keep their descriptions
+        stripped = stripped.replace(/<file path="([^"]+)">(.*?)<\/file>/gs, (match, path) => {
+            return `[File: ${path}]`;
+        });
+        
+        stripped = stripped.replace(/<edit file="([^"]+)"[^>]*>(.*?)<\/edit>/gs, (match, path) => {
+            return `[Edit: ${path}]`;
+        });
+        
+        stripped = stripped.replace(/<terminal>(.*?)<\/terminal>/gs, (match, cmd) => {
+            const trimmed = cmd.trim();
+            return `[Terminal: ${trimmed.length > 50 ? trimmed.substring(0, 50) + '...' : trimmed}]`;
+        });
+        
+        stripped = stripped.replace(/<readFile path="([^"]+)"\s*\/>/g, (match, path) => {
+            return `[Read: ${path}]`;
+        });
+        
+        stripped = stripped.replace(/<openFile path="([^"]+)"[^>]*\/>/g, (match, path) => {
+            return `[Open: ${path}]`;
+        });
+        
+        return stripped.trim();
+    }
+
+    /**
      * Parse action tags from response and generate tool calls
      */
-    private parseActionTags(content: string, requestId: string, onToolCall: (toolCall: ToolCallPayload) => void): void {
+    private parseActionTags(
+        content: string, 
+        requestId: string, 
+        onToolCall: (toolCall: ToolCallPayload) => void,
+        onFileWrite?: (path: string, content: string) => Promise<void>,
+        onFileEdit?: (path: string, content: string) => Promise<void>
+    ): void {
         const patterns = [
-            { regex: /<terminal>(.*?)<\/terminal>/gs, type: 'terminal' as const, desc: (match: string) => `Run command: ${match.trim()}` },
-            { regex: /<file path="([^"]+)">(.*?)<\/file>/gs, type: 'file_write' as const, desc: (match: string, path?: string) => `Write file: ${path}` },
-            { regex: /<readFile path="([^"]+)"\s*\/>/g, type: 'file_read' as const, desc: (match: string, path?: string) => `Read file: ${path}` },
-            { regex: /<openFile path="([^"]+)"[^>]*\/>/g, type: 'file_edit' as const, desc: (match: string, path?: string) => `Open file: ${path}` },
-            { regex: /<edit file="([^"]+)"[^>]*>(.*?)<\/edit>/gs, type: 'file_edit' as const, desc: (match: string, path?: string) => `Edit file: ${path}` },
+            { 
+                regex: /<file path="([^"]+)">(.*?)<\/file>/gs, 
+                type: 'file_write' as const, 
+                desc: (path?: string) => `Write file: ${path}`,
+                execute: async (match: RegExpMatchArray) => {
+                    if (onFileWrite) {
+                        const path = match[1];
+                        const content = match[2];
+                        await onFileWrite(path, content);
+                    }
+                }
+            },
+            { 
+                regex: /<edit file="([^"]+)"[^>]*>(.*?)<\/edit>/gs, 
+                type: 'file_edit' as const, 
+                desc: (path?: string) => `Edit file: ${path}`,
+                execute: async (match: RegExpMatchArray) => {
+                    if (onFileEdit) {
+                        const path = match[1];
+                        const content = match[2];
+                        await onFileEdit(path, content);
+                    }
+                }
+            },
+            { 
+                regex: /<readFile path="([^"]+)"\s*\/>/g, 
+                type: 'file_read' as const, 
+                desc: (path?: string) => `Read file: ${path}`,
+                execute: async () => {
+                    // Read operations are informational only, not executed here
+                }
+            },
+            { 
+                regex: /<openFile path="([^"]+)"[^>]*\/>/g, 
+                type: 'file_edit' as const, 
+                desc: (path?: string) => `Open file: ${path}`,
+                execute: async () => {
+                    // Open operations are informational only
+                }
+            },
+            { 
+                regex: /<terminal>(.*?)<\/terminal>/gs, 
+                type: 'terminal' as const, 
+                desc: () => `Run terminal command`,
+                execute: async () => {
+                    // Terminal operations are informational only
+                }
+            },
         ];
 
         for (const pattern of patterns) {
@@ -130,47 +210,71 @@ export class CopilotBridge {
                 const path = match[1];
                 const details = match[2] ? (match[2].length > 100 ? match[2].substring(0, 100) + '...' : match[2]) : path;
                 
-                // Send pending
+                // Send pending status
                 onToolCall({
                     requestId,
                     toolCall: {
                         id,
                         type: pattern.type,
                         status: 'pending',
-                        description: pattern.desc(match[0], path),
+                        description: pattern.desc(path),
                         details,
                         timestamp: Date.now()
                     }
                 });
 
-                // Simulate execution (in real impl, these would actually execute)
-                setTimeout(() => {
-                    onToolCall({
-                        requestId,
-                        toolCall: {
-                            id,
-                            type: pattern.type,
-                            status: 'running',
-                            description: pattern.desc(match[0], path),
-                            details,
-                            timestamp: Date.now()
-                        }
-                    });
+                // Execute the action asynchronously
+                (async () => {
+                    try {
+                        // Send running status
+                        onToolCall({
+                            requestId,
+                            toolCall: {
+                                id,
+                                type: pattern.type,
+                                status: 'running',
+                                description: pattern.desc(path),
+                                details,
+                                timestamp: Date.now()
+                            }
+                        });
 
-                    setTimeout(() => {
+                        // Execute the actual operation
+                        await pattern.execute(match);
+
+                        // For file operations, indicate they're awaiting approval
+                        // For other operations, mark as success
+                        const isFileOperation = pattern.type === 'file_write' || pattern.type === 'file_edit';
                         onToolCall({
                             requestId,
                             toolCall: {
                                 id,
                                 type: pattern.type,
                                 status: 'success',
-                                description: pattern.desc(match[0], path),
-                                details,
+                                description: isFileOperation 
+                                    ? `${pattern.desc(path)} (awaiting approval)` 
+                                    : pattern.desc(path),
+                                details: isFileOperation 
+                                    ? 'Change buffered and sent for approval' 
+                                    : details,
                                 timestamp: Date.now()
                             }
                         });
-                    }, 500);
-                }, 100);
+                    } catch (err) {
+                        // Send error status
+                        onToolCall({
+                            requestId,
+                            toolCall: {
+                                id,
+                                type: pattern.type,
+                                status: 'error',
+                                description: pattern.desc(path),
+                                details: err instanceof Error ? err.message : String(err),
+                                timestamp: Date.now()
+                            }
+                        });
+                    }
+                })();
             }
         }
     }
@@ -196,7 +300,9 @@ You are being accessed through a remote client application connected to VS Code.
         onChunk: (chunk: ChunkPayload) => void,
         onDone: (done: DonePayload) => void,
         onError: (error: ErrorPayload) => void,
-        onToolCall?: (toolCall: ToolCallPayload) => void
+        onToolCall?: (toolCall: ToolCallPayload) => void,
+        onFileWrite?: (path: string, content: string) => Promise<void>,
+        onFileEdit?: (path: string, content: string) => Promise<void>
     ): Promise<void> {
         try {
             const mode = payload.mode || 'agent';
@@ -295,15 +401,18 @@ You are being accessed through a remote client application connected to VS Code.
 
             // Parse and execute action tags if in agent mode and onToolCall is provided
             if (mode === 'agent' && onToolCall) {
-                this.parseActionTags(fullContent, requestId, onToolCall);
+                this.parseActionTags(fullContent, requestId, onToolCall, onFileWrite, onFileEdit);
             }
+
+            // Strip action tags from display content
+            const displayContent = mode === 'agent' ? this.stripActionTags(fullContent) : fullContent;
 
             // Clean up and send done
             this.pendingRequests.delete(requestId);
 
             onDone({
                 requestId,
-                fullContent
+                fullContent: displayContent
             });
 
         } catch (err) {

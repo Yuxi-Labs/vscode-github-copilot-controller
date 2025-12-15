@@ -32,7 +32,8 @@ import {
     ApproveChangePayload,
     RejectChangePayload,
     BatchApprovePayload,
-    BatchRejectPayload
+    BatchRejectPayload,
+    FileChangedPayload
 } from './types';
 
 /**
@@ -52,6 +53,8 @@ export class Controller {
     private wsClients: Map<string, WebSocket> = new Map();
     private sseClients: Map<string, http.ServerResponse> = new Map();
     private pingIntervals: Map<string, NodeJS.Timeout> = new Map();
+    private fileWatcher: vscode.FileSystemWatcher | null = null;
+    private fileChangeDebounce: Map<string, NodeJS.Timeout> = new Map();
     private startTime: number = 0;
     private outputChannel: vscode.OutputChannel;
     private connectionChangeEmitter = new vscode.EventEmitter<number>();
@@ -184,6 +187,10 @@ export class Controller {
             this.httpListener!.listen(this.port, () => {
                 this.log(`Controller started on port ${this.port}`);
                 this.log(`Auth token: ${this.authToken.substring(0, 8)}...`);
+                
+                // Start file system watcher
+                this.startFileWatcher();
+                
                 vscode.window.showInformationMessage(
                     `GitHub Copilot Controller running on port ${this.port}`
                 );
@@ -204,6 +211,9 @@ export class Controller {
         if (!this.httpListener) {
             return;
         }
+
+        // Stop file watcher
+        this.stopFileWatcher();
 
         // Close all connections
         for (const ws of this.wsClients.values()) {
@@ -1105,7 +1115,7 @@ export class Controller {
     private async processMessageType(message: ClientMessage, send: (msg: ControllerMessage) => void, connectionId: string): Promise<void> {
         switch (message.type) {
             case 'chat':
-                await this.handleChat(message.id, message.payload as ChatPayload, send);
+                await this.handleChat(message.id, message.payload as ChatPayload, send, connectionId);
                 break;
 
             case 'cancel':
@@ -1388,7 +1398,8 @@ export class Controller {
     private async handleChat(
         requestId: string, 
         payload: ChatPayload,
-        send: (msg: ControllerMessage) => void
+        send: (msg: ControllerMessage) => void,
+        connectionId: string
     ): Promise<void> {
         this.log(`Chat request ${requestId}: ${payload.message.substring(0, 50)}... (includeContext: ${payload.includeContext})`);
 
@@ -1435,7 +1446,10 @@ export class Controller {
                 send({
                     id: requestId,
                     type: 'error',
-                    payload: error
+                    payload: {
+                        ...error,
+                        error: error.message  // Include 'error' field for client compatibility
+                    }
                 });
                 this.log(`Chat request ${requestId} error: ${error.message}`);
             },
@@ -1445,6 +1459,58 @@ export class Controller {
                     type: 'toolCall',
                     payload: toolCall
                 });
+            },
+            // File write handler - buffers changes for approval
+            async (path: string, content: string) => {
+                try {
+                    const change = await this.changeBuffer.bufferWriteFile(connectionId, {
+                        path,
+                        content
+                    });
+                    this.log(`Agent buffered write: ${path} (change ID: ${change.id})`);
+                    send({
+                        id: requestId,  // Use requestId to attach to the correct message
+                        type: 'pendingChange',
+                        payload: {
+                            changeId: change.id,
+                            changeType: 'write',
+                            path: change.path,
+                            diff: change.diff!,
+                            additions: change.additions,
+                            deletions: change.deletions,
+                            timestamp: change.timestamp
+                        }
+                    });
+                } catch (err) {
+                    this.log(`Agent write error: ${path} - ${err}`);
+                    throw err;
+                }
+            },
+            // File edit handler - buffers changes for approval
+            async (path: string, content: string) => {
+                try {
+                    const change = await this.changeBuffer.bufferWriteFile(connectionId, {
+                        path,
+                        content
+                    });
+                    this.log(`Agent buffered edit: ${path} (change ID: ${change.id})`);
+                    send({
+                        id: requestId,  // Use requestId to attach to the correct message
+                        type: 'pendingChange',
+                        payload: {
+                            changeId: change.id,
+                            changeType: 'edit',
+                            path: change.path,
+                            diff: change.diff!,
+                            additions: change.additions,
+                            deletions: change.deletions,
+                            timestamp: change.timestamp
+                        }
+                    });
+                } catch (err) {
+                    this.log(`Agent edit error: ${path} - ${err}`);
+                    throw err;
+                }
             }
         );
     }
@@ -1967,6 +2033,188 @@ export class Controller {
                 type: 'error',
                 payload: { code: 'TERMINAL_RESIZE_ERROR', message: `${err}` }
             });
+        }
+    }
+
+    // ============ File System Watcher ============
+
+    /**
+     * Start watching for file changes in the workspace
+     */
+    private startFileWatcher(): void {
+        if (this.fileWatcher) {
+            return;
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            this.log('No workspace folder open, file watcher not started');
+            return;
+        }
+
+        // Watch all files in the workspace
+        this.fileWatcher = vscode.workspace.createFileSystemWatcher('**/*');
+
+        this.fileWatcher.onDidChange(async (uri) => {
+            await this.handleFileChange(uri, 'changed');
+        });
+
+        this.fileWatcher.onDidCreate(async (uri) => {
+            await this.handleFileChange(uri, 'created');
+        });
+
+        this.fileWatcher.onDidDelete(async (uri) => {
+            await this.handleFileChange(uri, 'deleted');
+        });
+
+        this.log('File system watcher started');
+    }
+
+    /**
+     * Stop the file system watcher
+     */
+    private stopFileWatcher(): void {
+        if (this.fileWatcher) {
+            this.fileWatcher.dispose();
+            this.fileWatcher = null;
+            this.log('File system watcher stopped');
+        }
+
+        // Clear any pending debounce timers
+        for (const timer of this.fileChangeDebounce.values()) {
+            clearTimeout(timer);
+        }
+        this.fileChangeDebounce.clear();
+    }
+
+    /**
+     * Handle a file change event with debouncing
+     */
+    private async handleFileChange(uri: vscode.Uri, changeType: 'changed' | 'created' | 'deleted'): Promise<void> {
+        // Skip if no authenticated connections
+        const authenticatedClients = Array.from(this.connections.entries())
+            .filter(([, conn]) => conn.authenticated);
+        
+        if (authenticatedClients.length === 0) {
+            return;
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return;
+        }
+
+        const workspaceRoot = workspaceFolders[0].uri;
+        const relativePath = vscode.workspace.asRelativePath(uri, false);
+
+        // Skip common files/directories that shouldn't trigger sync
+        if (this.shouldIgnoreFile(relativePath)) {
+            return;
+        }
+
+        // Debounce rapid changes to the same file (e.g., during save)
+        const debounceKey = `${uri.toString()}-${changeType}`;
+        const existingTimer = this.fileChangeDebounce.get(debounceKey);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+        }
+
+        this.fileChangeDebounce.set(debounceKey, setTimeout(async () => {
+            this.fileChangeDebounce.delete(debounceKey);
+            await this.broadcastFileChange(uri, relativePath, changeType);
+        }, 300)); // 300ms debounce
+    }
+
+    /**
+     * Check if a file should be ignored for sync purposes
+     */
+    private shouldIgnoreFile(relativePath: string): boolean {
+        const ignorePatterns = [
+            /^\.git\//,
+            /^node_modules\//,
+            /^\.vscode\//,
+            /^dist\//,
+            /^build\//,
+            /^out\//,
+            /^target\//,
+            /\.lock$/,
+            /\.log$/,
+            /\.tmp$/,
+            /\.swp$/,
+            /~$/,
+        ];
+
+        return ignorePatterns.some(pattern => pattern.test(relativePath));
+    }
+
+    /**
+     * Broadcast a file change to all authenticated clients
+     */
+    private async broadcastFileChange(
+        uri: vscode.Uri, 
+        relativePath: string, 
+        changeType: 'changed' | 'created' | 'deleted'
+    ): Promise<void> {
+        const messageType = changeType === 'changed' ? 'fileChanged' 
+            : changeType === 'created' ? 'fileCreated' 
+            : 'fileDeleted';
+
+        let payload: FileChangedPayload = {
+            path: relativePath,
+            changeType,
+            timestamp: Date.now(),
+        };
+
+        // For non-deleted files, try to include content if it's small enough
+        if (changeType !== 'deleted') {
+            try {
+                const stat = await vscode.workspace.fs.stat(uri);
+                payload.size = stat.size;
+
+                // Only include content for files under 100KB to avoid bandwidth issues
+                if (stat.size < 100 * 1024) {
+                    const content = await vscode.workspace.fs.readFile(uri);
+                    payload.content = new TextDecoder().decode(content);
+                }
+
+                // Try to get language ID
+                try {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    payload.language = doc.languageId;
+                } catch {
+                    // File might not be openable as text document
+                }
+            } catch (error) {
+                this.logDebug(`Could not read file for sync: ${relativePath} - ${error}`);
+            }
+        }
+
+        const message: ControllerMessage = {
+            id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: messageType as any,
+            payload
+        };
+
+        // Broadcast to all authenticated clients
+        let broadcastCount = 0;
+        for (const [clientId, conn] of this.connections.entries()) {
+            if (!conn.authenticated) continue;
+
+            const ws = this.wsClients.get(clientId);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                this.sendWebSocketMessage(clientId, ws, message);
+                broadcastCount++;
+            }
+
+            const sse = this.sseClients.get(clientId);
+            if (sse && sse.writable) {
+                this.sendSSE(sse, messageType, message, clientId);
+                broadcastCount++;
+            }
+        }
+
+        if (broadcastCount > 0) {
+            this.logDebug(`Broadcasted ${changeType} for ${relativePath} to ${broadcastCount} client(s)`);
         }
     }
 
